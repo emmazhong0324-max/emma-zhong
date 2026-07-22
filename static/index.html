@@ -1,0 +1,5 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>业务判断智能体</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<main><header><span>ORCHESTRATED REVIEW</span><h1>业务判断智能体</h1><p>从文档证据中定位规则，输出可追溯的通过 / 不通过判断。</p></header>
+<section class="panel"><form id="form"><label>数据集类型<select name="dataset_type"><option>计划任务书</option><option>立项申请书</option></select></label><label>判断 Intent<input name="intent" required placeholder="例如：判断创新程度是否足够"></label><label class="drop">上传评测数据<input name="files" type="file" multiple required accept=".pdf,.docx,.txt,.md,.json,.jsonl,.csv"><small>支持 PDF、DOCX、TXT、MD、JSON(L)、CSV，最多 100 条</small></label><button>运行智能体 <b>→</b></button></form></section>
+<section id="status"></section><section id="results"></section></main><script src="/static/app.js"></script></body></html>
+
