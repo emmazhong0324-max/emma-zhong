@@ -2,6 +2,7 @@ import hashlib, json, os, re
 from openai import AsyncOpenAI
 from pydantic import ValidationError
 from .schemas import EvidencePack, Judgment, RuleCandidate, RuleHit
+from .training_rules import training_decision
 
 SYSTEM = """你是业务评审智能体。只依据文档证据判断，不得为了输出'通过'而脑补。规则名称必须是对当前 intent 的可复用语义规则，而不是复述样本文字。区分'未提及'和'明确不满足'；除非属于必备/否决项，证据缺失不能自动判不通过。引用证据要短且可在原文定位。输出严格 JSON。"""
 
@@ -104,6 +105,28 @@ class JudgeAgent:
         return json.loads(r.choices[0].message.content)
 
     async def judge(self, sid: str, dtype: str, intent: str, text: str) -> Judgment:
+        learned=training_decision(text,intent)
+        if learned:
+            hits=[
+                RuleHit(
+                    rule_id=f"TRN-{index:02d}",
+                    rule_name="训练集归纳规则",
+                    evidence=signal,
+                    polarity="支持" if learned.label=="通过" else "反对",
+                    confidence=learned.confidence,
+                )
+                for index,signal in enumerate(learned.signals,1)
+            ]
+            return Judgment(
+                id=sid,
+                dataset_type=dtype,
+                intent=intent,
+                label=learned.label,
+                matched_rules=hits,
+                reason=learned.reason,
+                confidence=learned.confidence,
+                needs_review=False,
+            )
         if not os.getenv("OPENAI_API_KEY"):
             return self._fallback(sid,dtype,intent,text)
         excerpt=text[:50000]

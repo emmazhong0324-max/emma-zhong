@@ -31,6 +31,25 @@ def _libreoffice_text(name: str, data: bytes) -> str:
             return ""
         return _clean(converted.read_text(encoding="utf-8-sig", errors="replace"))
 
+def _word_xml_text(xml_bytes: bytes) -> str:
+    """Extract paragraphs in document order, including text inside table cells."""
+    if not xml_bytes:
+        return ""
+    try:
+        root=ElementTree.fromstring(xml_bytes)
+        namespace="{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        paragraphs=[]
+        for paragraph in root.iter(f"{namespace}p"):
+            text="".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
+            if text.strip():
+                paragraphs.append(text)
+        return _clean("\n".join(paragraphs))
+    except ElementTree.ParseError:
+        raw=xml_bytes.decode("utf-8",errors="ignore")
+        raw=re.sub(r"</w:p>", "\n", raw)
+        pieces=re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>",raw,flags=re.S)
+        return _clean(html.unescape("\n".join(re.sub(r"<[^>]+>","",piece) for piece in pieces)))
+
 def _salvage_docx(data: bytes) -> str:
     """Extract document.xml without CRC validation when the payload is still readable."""
     try:
@@ -59,22 +78,7 @@ def _salvage_docx(data: bytes) -> str:
                 xml_bytes=b"".join(recovered)
         else:
             return ""
-        if not xml_bytes:
-            return ""
-        try:
-            root=ElementTree.fromstring(xml_bytes)
-            namespace="{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-            paragraphs=[]
-            for paragraph in root.iter(f"{namespace}p"):
-                text="".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
-                if text.strip():
-                    paragraphs.append(text)
-            return _clean("\n".join(paragraphs))
-        except ElementTree.ParseError:
-            raw=xml_bytes.decode("utf-8",errors="ignore")
-            raw=re.sub(r"</w:p>", "\n", raw)
-            pieces=re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>",raw,flags=re.S)
-            return _clean(html.unescape("\n".join(re.sub(r"<[^>]+>","",piece) for piece in pieces)))
+        return _word_xml_text(xml_bytes)
     except (KeyError, OSError, ValueError, zipfile.BadZipFile):
         return ""
 
@@ -88,8 +92,10 @@ def parse_single(name: str, data: bytes) -> str:
         return _clean("\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages))
     if ext == ".docx":
         try:
-            doc = Document(io.BytesIO(data))
-            return _clean("\n".join(p.text for p in doc.paragraphs))
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                text=_word_xml_text(archive.read("word/document.xml"))
+            if text:
+                return text
         except Exception:
             salvaged=_salvage_docx(data)
             if salvaged:
@@ -98,6 +104,11 @@ def parse_single(name: str, data: bytes) -> str:
             if recovered:
                 return recovered
             raise ValueError("该 DOCX 文件内部结构或校验值已损坏，请用 Word/WPS 打开后“另存为”新的 DOCX 再上传")
+        try:
+            doc = Document(io.BytesIO(data))
+            return _clean("\n".join(p.text for p in doc.paragraphs))
+        except Exception:
+            raise ValueError("该 DOCX 文件不含可读取的正文内容")
     if ext == ".doc":
         with tempfile.TemporaryDirectory() as temp_dir:
             source=Path(temp_dir)/"source.doc"
