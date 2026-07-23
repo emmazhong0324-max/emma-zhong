@@ -7,7 +7,15 @@ form.addEventListener('submit',async e=>{
   e.preventDefault();results.innerHTML='';statusEl.innerHTML='<div class="status-box"><span class="loader"></span><span>正在解析文档 · 发现规则 · 核验证据 · 生成裁决</span></div>';
   const b=form.querySelector('button');b.disabled=true;b.querySelector('span').textContent='智能体运行中…';
   try{
-    const r=await fetch('/api/judge',{method:'POST',body:new FormData(form)}),d=await r.json();if(!r.ok)throw Error(d.detail||'请求失败');
+    const r=await fetch('/api/judge',{method:'POST',body:new FormData(form)});
+    const contentType=r.headers.get('content-type')||'';
+    let d;
+    if(contentType.includes('application/json'))d=await r.json();
+    else{
+      await r.text();
+      throw Error(r.ok?'服务器返回格式异常，请稍后重试':`服务器暂时不可用（HTTP ${r.status}），请等待 Render 部署完成后重试`);
+    }
+    if(!r.ok)throw Error(d.detail||'请求失败');
     statusEl.innerHTML=`<div class="status-box done"><span class="loader"></span><span>评审完成 · 共生成 ${d.count} 条判断结果</span></div>`;
     results.innerHTML=d.results.map(x=>x.error?`<article class="card fail"><h2>${esc(x.id)}：处理失败</h2></article>`:`<article class="card ${x.label==='不通过'?'fail':''}"><h2>${esc(x.id)}：${esc(x.label)}</h2></article>`).join('');
     results.scrollIntoView({behavior:'smooth',block:'start'});
