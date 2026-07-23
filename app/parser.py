@@ -1,7 +1,8 @@
-import csv, io, json, re, subprocess, tempfile
+import csv, html, io, json, re, subprocess, tempfile, zipfile, zlib
 from pathlib import Path
 from docx import Document
 from pypdf import PdfReader
+from xml.etree import ElementTree
 
 MAX_FILE = 15 * 1024 * 1024
 
@@ -30,6 +31,53 @@ def _libreoffice_text(name: str, data: bytes) -> str:
             return ""
         return _clean(converted.read_text(encoding="utf-8-sig", errors="replace"))
 
+def _salvage_docx(data: bytes) -> str:
+    """Extract document.xml without CRC validation when the payload is still readable."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            info=archive.getinfo("word/document.xml")
+        header=data[info.header_offset:info.header_offset+30]
+        if len(header) != 30 or header[:4] != b"PK\x03\x04":
+            return ""
+        name_length=int.from_bytes(header[26:28],"little")
+        extra_length=int.from_bytes(header[28:30],"little")
+        start=info.header_offset+30+name_length+extra_length
+        compressed=data[start:start+info.compress_size]
+        if info.compress_type == zipfile.ZIP_STORED:
+            xml_bytes=compressed
+        elif info.compress_type == zipfile.ZIP_DEFLATED:
+            try:
+                xml_bytes=zlib.decompress(compressed,-15)
+            except zlib.error:
+                decompressor=zlib.decompressobj(-15)
+                recovered=[]
+                for offset in range(0,len(compressed),4096):
+                    try:
+                        recovered.append(decompressor.decompress(compressed[offset:offset+4096]))
+                    except zlib.error:
+                        break
+                xml_bytes=b"".join(recovered)
+        else:
+            return ""
+        if not xml_bytes:
+            return ""
+        try:
+            root=ElementTree.fromstring(xml_bytes)
+            namespace="{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+            paragraphs=[]
+            for paragraph in root.iter(f"{namespace}p"):
+                text="".join(node.text or "" for node in paragraph.iter(f"{namespace}t"))
+                if text.strip():
+                    paragraphs.append(text)
+            return _clean("\n".join(paragraphs))
+        except ElementTree.ParseError:
+            raw=xml_bytes.decode("utf-8",errors="ignore")
+            raw=re.sub(r"</w:p>", "\n", raw)
+            pieces=re.findall(r"<w:t(?:\s[^>]*)?>(.*?)</w:t>",raw,flags=re.S)
+            return _clean(html.unescape("\n".join(re.sub(r"<[^>]+>","",piece) for piece in pieces)))
+    except (KeyError, OSError, ValueError, zipfile.BadZipFile):
+        return ""
+
 def parse_single(name: str, data: bytes) -> str:
     if len(data) > MAX_FILE:
         raise ValueError("单个文件不能超过 15MB")
@@ -43,6 +91,9 @@ def parse_single(name: str, data: bytes) -> str:
             doc = Document(io.BytesIO(data))
             return _clean("\n".join(p.text for p in doc.paragraphs))
         except Exception:
+            salvaged=_salvage_docx(data)
+            if salvaged:
+                return salvaged
             recovered=_libreoffice_text(name,data)
             if recovered:
                 return recovered
