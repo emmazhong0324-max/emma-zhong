@@ -30,7 +30,7 @@
         <div><h2>创建评审任务</h2><p>选择材料类型，填写判断目标，并上传待评文档。</p></div>
       </header>
 
-      <form id="form">
+      <form id="form" autocomplete="off">
         <div class="field">
           <label for="dataset">数据集类型</label>
           <div class="control select-wrap">
@@ -44,16 +44,16 @@
         <div class="field">
           <label for="intent">判断目标 <small>Intent</small></label>
           <div class="control">
-            <input id="intent" name="intent" required placeholder="例如：判断本项目创新程度是否足够">
+            <input id="intent" name="intent" required autocomplete="off" aria-autocomplete="none" spellcheck="false" placeholder="例如：判断本项目创新程度是否足够">
           </div>
         </div>
 
         <label class="drop" id="drop-zone" for="files">
-          <input id="files" name="files" type="file" multiple required accept=".pdf,.docx,.txt,.md,.json,.jsonl,.csv">
+          <input id="files" name="files" type="file" multiple required accept=".pdf,.doc,.docx,.txt,.md,.json,.jsonl,.csv">
           <span class="upload-icon">↑</span>
           <span class="drop-copy">
             <b>上传评测材料</b>
-            <small id="file-note">支持 PDF、DOCX、TXT、MD、JSON(L)、CSV，最多 100 条</small>
+            <small id="file-note">支持 PDF、DOC、DOCX、TXT、MD、JSON(L)、CSV，最多 100 条</small>
           </span>
           <span class="browse">选择文件</span>
         </label>
