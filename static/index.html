@@ -3,43 +3,78 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0b1220">
+  <meta name="theme-color" content="#edf2f7">
   <title>衡鉴 · 业务判断智能体</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
-  <nav>
-    <a class="brand" href="/"><span class="brand-mark">衡</span><span>衡鉴</span></a>
-    <div class="nav-meta"><span class="pulse"></span> 智能评审引擎已就绪</div>
-  </nav>
-  <main>
-    <section class="hero">
-      <div class="eyebrow"><span>ORCHESTRATED REVIEW</span><i></i><span>01 / 规则驱动</span></div>
-      <h1>让每一次判断<br><em>都有据可循</em></h1>
-      <p>解析业务文档，定位潜在规则，以可回溯的证据链输出明确判断。</p>
-      <div class="capabilities"><span>多格式解析</span><span>规则语义对齐</span><span>证据级溯源</span></div>
+  <main class="shell">
+    <section class="intro-grid">
+      <article class="hero-card">
+        <span class="pill">项目评审 · 文档智能判断</span>
+        <h1>业务判断<br>智能体</h1>
+        <p>上传计划任务书或立项申请书，系统自动解析材料、调用 AI，并输出清晰的通过 / 不通过结果。</p>
+        <div class="watermark">REVIEW AI</div>
+      </article>
+
+      <aside class="summary-card">
+        <div class="summary-row"><span>支持输出</span><strong>单份 / 百份批量</strong></div>
+        <div class="summary-row"><span>输入材料</span><strong>PDF · Word · CSV</strong></div>
+        <div class="summary-row"><span>结果格式</span><strong>通过 / 不通过</strong></div>
+      </aside>
     </section>
 
-    <section class="workspace">
-      <div class="section-head"><div><span class="step">01</span><h2>创建评审任务</h2></div><p>填写判断目标并上传待评材料</p></div>
+    <section class="task-card">
+      <header class="step-head">
+        <span class="step-number">1</span>
+        <div><h2>创建评审任务</h2><p>选择材料类型，填写判断目标，并上传待评文档。</p></div>
+      </header>
+
       <form id="form">
-        <div class="field compact"><label for="dataset">数据集类型</label><div class="control select-wrap"><select id="dataset" name="dataset_type"><option>计划任务书</option><option>立项申请书</option></select></div></div>
-        <div class="field"><label for="intent">判断目标 <small>Intent</small></label><div class="control"><input id="intent" name="intent" required placeholder="例如：判断本项目创新程度是否足够"></div></div>
+        <div class="field">
+          <label for="dataset">数据集类型</label>
+          <div class="control select-wrap">
+            <select id="dataset" name="dataset_type">
+              <option>计划任务书</option>
+              <option>立项申请书</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="intent">判断目标 <small>Intent</small></label>
+          <div class="control">
+            <input id="intent" name="intent" required placeholder="例如：判断本项目创新程度是否足够">
+          </div>
+        </div>
+
         <label class="drop" id="drop-zone" for="files">
           <input id="files" name="files" type="file" multiple required accept=".pdf,.docx,.txt,.md,.json,.jsonl,.csv">
-          <span class="upload-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span>
-          <span class="drop-copy"><b>拖放文件至此，或点击选择</b><small id="file-note">PDF、DOCX、TXT、MD、JSON(L)、CSV · 最多 100 条</small></span>
-          <span class="browse">浏览文件</span>
+          <span class="upload-icon">↑</span>
+          <span class="drop-copy">
+            <b>上传评测材料</b>
+            <small id="file-note">支持 PDF、DOCX、TXT、MD、JSON(L)、CSV，最多 100 条</small>
+          </span>
+          <span class="browse">选择文件</span>
         </label>
-        <button type="submit"><span>启动智能评审</span><span class="arrow">↗</span></button>
+
+        <button type="submit"><span>运行智能体</span><span class="arrow">→</span></button>
       </form>
     </section>
 
-    <section id="status" aria-live="polite"></section>
-    <section id="results"></section>
+    <section class="process-card">
+      <header class="step-head">
+        <span class="step-number">2</span>
+        <div><h2>智能评审结果</h2><p>系统完成解析和判断后，将在下方展示简洁结论。</p></div>
+        <span class="engine-state"><i></i> DeepSeek 已连接</span>
+      </header>
+      <section id="status" aria-live="polite"></section>
+      <section id="results"></section>
+      <div class="empty-state">结果格式：文档名称：通过 / 不通过</div>
+    </section>
+
+    <footer><span>衡鉴 HENGJIAN</span><p>AI 结论仅供业务评审参考，请结合实际情况进行最终决策。</p></footer>
   </main>
-  <footer><span>HENGJIAN AI REVIEW</span><p>结论由智能模型生成，请结合业务实际进行最终决策。</p></footer>
   <script src="/static/app.js"></script>
 </body>
 </html>
