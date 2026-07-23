@@ -1,5 +1,6 @@
 import hashlib, json, os, re
 from openai import AsyncOpenAI
+from pydantic import ValidationError
 from .schemas import EvidencePack, Judgment, RuleCandidate, RuleHit
 
 SYSTEM = """你是业务评审智能体。只依据文档证据判断，不得为了输出'通过'而脑补。规则名称必须是对当前 intent 的可复用语义规则，而不是复述样本文字。区分'未提及'和'明确不满足'；除非属于必备/否决项，证据缺失不能自动判不通过。引用证据要短且可在原文定位。输出严格 JSON。"""
@@ -23,6 +24,54 @@ def extract_list(payload, key: str) -> list:
         if isinstance(value, dict):
             return [value]
     return []
+
+def normalize_confidence(value, default: float=.5) -> float:
+    try:
+        score=float(value)
+    except (TypeError, ValueError):
+        return default
+    if 1 < score <= 100:
+        score/=100
+    return max(0.0,min(1.0,score))
+
+def normalize_judgment_payload(payload: dict, rules: list[RuleCandidate]) -> dict:
+    """Tolerate common DeepSeek JSON variations without inventing evidence."""
+    if not isinstance(payload,dict):
+        return {}
+    normalized=dict(payload)
+    rule_lookup={rule.rule_id:rule for rule in rules}
+    raw_hits=extract_list(payload,"matched_rules")
+    hits=[]
+    for index,item in enumerate(raw_hits,1):
+        if not isinstance(item,dict):
+            continue
+        nested=item.get("reason")
+        if isinstance(nested,dict):
+            item={**nested,**{key:value for key,value in item.items() if key!="reason"}}
+        rule_id=str(item.get("rule_id") or item.get("id") or f"R-{index:02d}")
+        candidate=rule_lookup.get(rule_id)
+        evidence=item.get("evidence") or item.get("quote") or item.get("source_text") or item.get("text")
+        if isinstance(evidence,list):
+            evidence="；".join(str(value) for value in evidence if value)
+        elif isinstance(evidence,dict):
+            evidence=json.dumps(evidence,ensure_ascii=False)
+        if not str(evidence or "").strip():
+            # A rule without a source quote is not a valid match and must not
+            # influence the traceable result.
+            continue
+        hits.append({
+            "rule_id":rule_id,
+            "rule_name":str(item.get("rule_name") or item.get("name") or (candidate.rule_name if candidate else "证据匹配规则")),
+            "evidence":str(evidence).strip(),
+            "polarity":item.get("polarity") or item.get("stance") or "支持",
+            "confidence":normalize_confidence(item.get("confidence")),
+        })
+    normalized["matched_rules"]=hits
+    reason=normalized.get("reason")
+    if isinstance(reason,(dict,list)):
+        normalized["reason"]=json.dumps(reason,ensure_ascii=False)
+    normalized["confidence"]=normalize_confidence(normalized.get("confidence"))
+    return normalized
 
 def has_strong_innovation_evidence(text: str) -> bool:
     for pattern in INNOVATION_MARKERS:
@@ -61,9 +110,20 @@ class JudgeAgent:
         facts=EvidencePack.model_validate(await self._json(f"抽取与判断意图相关的事实、缺失和矛盾。不得下结论。\n类型:{dtype}\n意图:{intent}\n文档:\n{excerpt}\n输出 facts,missing,contradictions 字符串数组。"))
         rules_raw=await self._json(f"基于业务常识和以下事实提出3-7条判定规则。规则ID为 R-01 起；区分加分规则和 blocking 否决规则。\n类型:{dtype}\n意图:{intent}\n证据包:{facts.model_dump_json()}\n输出 rules 数组，每项含 rule_id,rule_name,criterion,required_evidence,blocking。")
         rules=[RuleCandidate.model_validate(x) for x in extract_list(rules_raw,"rules")]
-        result=await self._json(f"执行独立裁决。仅命中有明确原文证据的规则。类别不平衡不能改变单条事实判断。若 blocking 规则明确触发则不通过；否则综合核心规则。若意图涉及创新程度，仅使用深度学习、AI、识别技术或常规模型不构成创新；只有明确原创成果、量化对比提升、授权发明专利、首创/领先/填补空白等可核验证据时才能通过。\n样本ID:{sid}\n类型:{dtype}\n意图:{intent}\n证据包:{facts.model_dump_json()}\n候选规则:{json.dumps([r.model_dump() for r in rules],ensure_ascii=False)}\n输出 id,dataset_type,intent,label,matched_rules(reason字段结构: rule_id,rule_name,evidence,polarity,confidence),reason,confidence,needs_review。")
+        result=await self._json(f"执行独立裁决。仅命中有明确原文证据的规则。类别不平衡不能改变单条事实判断。若 blocking 规则明确触发则不通过；否则综合核心规则。若意图涉及创新程度，仅使用深度学习、AI、识别技术或常规模型不构成创新；只有明确原创成果、量化对比提升、授权发明专利、首创/领先/填补空白等可核验证据时才能通过。\n样本ID:{sid}\n类型:{dtype}\n意图:{intent}\n证据包:{facts.model_dump_json()}\n候选规则:{json.dumps([r.model_dump() for r in rules],ensure_ascii=False)}\n输出 id,dataset_type,intent,label,matched_rules,reason,confidence,needs_review。matched_rules 必须是数组，每项直接包含 rule_id,rule_name,evidence,polarity,confidence 五个字段；禁止把这些字段放入 reason 子对象。没有原文 evidence 的规则不要输出。")
         result.update(id=sid,dataset_type=dtype,intent=intent)
-        judgment=Judgment.model_validate(result)
+        normalized=normalize_judgment_payload(result,rules)
+        try:
+            judgment=Judgment.model_validate(normalized)
+        except ValidationError:
+            repaired=await self._json(
+                "把以下裁决数据修复为严格 JSON。不得改变通过/不通过结论，不得编造证据。"
+                "matched_rules 必须为数组，每项直接包含 rule_id,rule_name,evidence,"
+                "polarity(支持或反对),confidence(0到1)；缺少 evidence 的项直接删除。"
+                f"\n原始数据:{json.dumps(result,ensure_ascii=False)}"
+            )
+            repaired.update(id=sid,dataset_type=dtype,intent=intent)
+            judgment=Judgment.model_validate(normalize_judgment_payload(repaired,rules))
         return enforce_innovation_gate(judgment,facts,intent)
 
     def _fallback(self,sid,dtype,intent,text):
