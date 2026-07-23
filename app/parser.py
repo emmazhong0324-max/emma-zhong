@@ -8,6 +8,28 @@ MAX_FILE = 15 * 1024 * 1024
 def _clean(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text.replace("\x00", "")).strip()
 
+def _libreoffice_text(name: str, data: bytes) -> str:
+    suffix=Path(name).suffix.lower() or ".doc"
+    with tempfile.TemporaryDirectory() as temp_dir:
+        source=Path(temp_dir)/f"source{suffix}"
+        source.write_bytes(data)
+        try:
+            subprocess.run(
+                [
+                    "libreoffice", "--headless", "--convert-to", "txt:Text",
+                    "--outdir", temp_dir, str(source),
+                ],
+                capture_output=True,
+                check=True,
+                timeout=60,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return ""
+        converted=Path(temp_dir)/"source.txt"
+        if not converted.exists():
+            return ""
+        return _clean(converted.read_text(encoding="utf-8-sig", errors="replace"))
+
 def parse_single(name: str, data: bytes) -> str:
     if len(data) > MAX_FILE:
         raise ValueError("单个文件不能超过 15MB")
@@ -17,8 +39,14 @@ def parse_single(name: str, data: bytes) -> str:
     if ext == ".pdf":
         return _clean("\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages))
     if ext == ".docx":
-        doc = Document(io.BytesIO(data))
-        return _clean("\n".join(p.text for p in doc.paragraphs))
+        try:
+            doc = Document(io.BytesIO(data))
+            return _clean("\n".join(p.text for p in doc.paragraphs))
+        except Exception:
+            recovered=_libreoffice_text(name,data)
+            if recovered:
+                return recovered
+            raise ValueError("该 DOCX 文件内部结构或校验值已损坏，请用 Word/WPS 打开后“另存为”新的 DOCX 再上传")
     if ext == ".doc":
         with tempfile.TemporaryDirectory() as temp_dir:
             source=Path(temp_dir)/"source.doc"
@@ -35,23 +63,9 @@ def parse_single(name: str, data: bytes) -> str:
                     return text
             except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 pass
-            try:
-                subprocess.run(
-                    [
-                        "libreoffice", "--headless", "--convert-to", "txt:Text",
-                        "--outdir", temp_dir, str(source),
-                    ],
-                    capture_output=True,
-                    check=True,
-                    timeout=60,
-                )
-                converted=Path(temp_dir)/"source.txt"
-                if converted.exists():
-                    text=_clean(converted.read_text(encoding="utf-8-sig", errors="replace"))
-                    if text:
-                        return text
-            except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                pass
+            text=_libreoffice_text(name,data)
+            if text:
+                return text
         raise ValueError("无法解析该 DOC 文件，请确认它是有效的 Word 97-2003 文档；也可另存为 DOCX 后重试")
     raise ValueError(f"不支持的文件类型: {ext or '未知'}")
 
