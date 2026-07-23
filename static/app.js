@@ -1,5 +1,31 @@
 const form=document.querySelector('#form'),statusEl=document.querySelector('#status'),results=document.querySelector('#results'),files=document.querySelector('#files')||document.querySelector('input[name="files"]'),drop=document.querySelector('#drop-zone')||document.querySelector('.drop'),note=document.querySelector('#file-note');
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const intentInput=document.querySelector('#intent'),intentSuggestions=document.querySelector('#intent-suggestions');
+const syncIntentSuggestions=()=>{
+  if(!intentInput||!intentSuggestions)return;
+  const query=intentInput.value.trim();
+  const buttons=[...intentSuggestions.querySelectorAll('button')];
+  let visible=0;
+  buttons.forEach(button=>{
+    const match=!query||button.dataset.intent.includes(query);
+    button.hidden=!match;if(match)visible++;
+  });
+  intentSuggestions.hidden=!visible;
+};
+if(intentInput&&intentSuggestions){
+  intentInput.addEventListener('focus',syncIntentSuggestions);
+  intentInput.addEventListener('input',syncIntentSuggestions);
+  intentSuggestions.addEventListener('click',event=>{
+    const button=event.target.closest('button[data-intent]');
+    if(!button)return;
+    intentInput.value=button.dataset.intent;
+    intentSuggestions.hidden=true;
+    intentInput.focus();
+  });
+  document.addEventListener('click',event=>{
+    if(!event.target.closest('.intent-field'))intentSuggestions.hidden=true;
+  });
+}
 if(files)files.addEventListener('change',()=>{if(note&&files.files.length)note.textContent=files.files.length===1?files.files[0].name:`已选择 ${files.files.length} 个文件`});
 if(drop){
   ['dragenter','dragover'].forEach(x=>drop.addEventListener(x,()=>drop.classList.add('dragover')));

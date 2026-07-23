@@ -37,6 +37,7 @@ body{
 .engine-state i{display:inline-block;width:7px;height:7px;background:#40b56c;border-radius:50%;margin-right:6px;box-shadow:0 0 0 4px rgba(64,181,108,.12)}
 form{display:grid;grid-template-columns:.8fr 1.45fr;column-gap:20px;row-gap:14px}
 .field{display:flex;flex-direction:column;gap:4px}.field label{font-weight:700;line-height:1.35}.field small{color:#9aa3b0;font-size:10px;text-transform:uppercase}
+.intent-field{position:relative}.intent-suggestions{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:20;padding:7px;background:#fff;border:1px solid #d9e1ea;border-radius:13px;box-shadow:0 14px 30px rgba(26,53,84,.16)}.intent-suggestions[hidden]{display:none}.intent-suggestions button{display:block;width:100%;height:auto;margin:0;padding:10px 12px;border-radius:8px;background:#fff;color:var(--ink);box-shadow:none;text-align:left;font-size:13px;font-weight:600}.intent-suggestions button:hover{background:#f1f6fb;transform:none;box-shadow:none}
 .control{height:58px;border:1px solid #d6dce5;border-radius:14px;background:#f9fafc;display:flex;align-items:center;transition:.2s}
 .control:focus-within{border-color:var(--blue2);background:#fff;box-shadow:0 0 0 4px rgba(35,84,135,.08)}
 .control input,.control select{border:0;outline:0;background:transparent;width:100%;height:100%;padding:0 17px;color:var(--ink);font:600 15px inherit}

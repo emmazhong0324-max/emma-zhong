@@ -41,10 +41,15 @@
           </div>
         </div>
 
-        <div class="field">
+        <div class="field intent-field">
           <label for="intent">判断目标 <small>Intent</small></label>
           <div class="control">
             <input id="intent" name="intent" required autocomplete="off" aria-autocomplete="none" spellcheck="false" placeholder="例如：判断本项目创新程度是否足够">
+          </div>
+          <div class="intent-suggestions" id="intent-suggestions" hidden>
+            <button type="button" data-intent="判断本项目创新程度是否足够">判断本项目创新程度是否足够</button>
+            <button type="button" data-intent="判断项目方案是否具备可行性">判断项目方案是否具备可行性</button>
+            <button type="button" data-intent="判断任务目标是否明确且可量化">判断任务目标是否明确且可量化</button>
           </div>
         </div>
 

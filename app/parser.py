@@ -20,21 +20,39 @@ def parse_single(name: str, data: bytes) -> str:
         doc = Document(io.BytesIO(data))
         return _clean("\n".join(p.text for p in doc.paragraphs))
     if ext == ".doc":
-        with tempfile.NamedTemporaryFile(suffix=".doc") as source:
-            source.write(data)
-            source.flush()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source=Path(temp_dir)/"source.doc"
+            source.write_bytes(data)
             try:
                 result = subprocess.run(
-                    ["antiword", source.name],
+                    ["antiword", str(source)],
                     capture_output=True,
                     check=True,
                     timeout=30,
                 )
-            except FileNotFoundError as exc:
-                raise ValueError("服务器尚未安装 DOC 解析组件") from exc
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                raise ValueError("无法解析该 DOC 文件，请确认文件未损坏") from exc
-        return _clean(result.stdout.decode("utf-8", errors="replace"))
+                text=_clean(result.stdout.decode("utf-8", errors="replace"))
+                if text:
+                    return text
+            except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                pass
+            try:
+                subprocess.run(
+                    [
+                        "libreoffice", "--headless", "--convert-to", "txt:Text",
+                        "--outdir", temp_dir, str(source),
+                    ],
+                    capture_output=True,
+                    check=True,
+                    timeout=60,
+                )
+                converted=Path(temp_dir)/"source.txt"
+                if converted.exists():
+                    text=_clean(converted.read_text(encoding="utf-8-sig", errors="replace"))
+                    if text:
+                        return text
+            except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                pass
+        raise ValueError("无法解析该 DOC 文件，请确认它是有效的 Word 97-2003 文档；也可另存为 DOCX 后重试")
     raise ValueError(f"不支持的文件类型: {ext or '未知'}")
 
 def split_records(name: str, data: bytes) -> list[tuple[str, str]]:
