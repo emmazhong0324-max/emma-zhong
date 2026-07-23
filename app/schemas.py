@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 DatasetType = Literal["计划任务书", "立项申请书"]
 
@@ -25,6 +25,15 @@ class EvidencePack(BaseModel):
     missing: list[str]
     contradictions: list[str]
 
+    @field_validator("facts", "missing", "contradictions", mode="before")
+    @classmethod
+    def normalize_text_lists(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
 class RuleCandidate(BaseModel):
     rule_id: str
     rule_name: str
@@ -32,3 +41,11 @@ class RuleCandidate(BaseModel):
     required_evidence: list[str]
     blocking: bool = False
 
+    @field_validator("required_evidence", mode="before")
+    @classmethod
+    def normalize_required_evidence(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
