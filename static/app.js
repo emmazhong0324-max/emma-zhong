@@ -32,20 +32,49 @@ if(drop){
   ['dragleave','drop'].forEach(x=>drop.addEventListener(x,()=>drop.classList.remove('dragover')));
 }
 form.addEventListener('submit',async e=>{
-  e.preventDefault();results.innerHTML='';statusEl.innerHTML='<div class="status-box"><span class="loader"></span><span>正在解析文档 · 发现规则 · 核验证据 · 生成裁决</span></div>';
+  e.preventDefault();results.innerHTML='';
+  const selectedFiles=[...(files?.files||[])];
+  if(!selectedFiles.length){
+    statusEl.innerHTML='<div class="status-box"><span>请先选择需要评审的文件</span></div>';
+    return;
+  }
+  statusEl.innerHTML='<div class="status-box"><span class="loader"></span><span>正在准备批量评审…</span></div>';
   const b=form.querySelector('button'),buttonText=b.querySelector('span');b.disabled=true;if(buttonText)buttonText.textContent='智能体运行中…';
+  const allResults=[];
+  let failedRequests=0;
   try{
-    const r=await fetch('/api/judge',{method:'POST',body:new FormData(form)});
-    const contentType=r.headers.get('content-type')||'';
-    let d;
-    if(contentType.includes('application/json'))d=await r.json();
-    else{
-      await r.text();
-      throw Error(r.ok?'服务器返回格式异常，请稍后重试':`服务器暂时不可用（HTTP ${r.status}），请等待 Render 部署完成后重试`);
+    for(let index=0;index<selectedFiles.length;index++){
+      const file=selectedFiles[index];
+      statusEl.innerHTML=`<div class="status-box"><span class="loader"></span><span>正在评审第 ${index+1} / ${selectedFiles.length} 个文件：${esc(file.name)}</span></div>`;
+      const payload=new FormData();
+      payload.append('dataset_type',form.elements.dataset_type.value);
+      payload.append('intent',form.elements.intent.value);
+      payload.append('files',file,file.name);
+      try{
+        const r=await fetch('/api/judge',{method:'POST',body:payload});
+        const contentType=r.headers.get('content-type')||'';
+        let d;
+        if(contentType.includes('application/json'))d=await r.json();
+        else{
+          await r.text();
+          throw Error(r.ok?'服务器返回格式异常':`服务器暂时不可用（HTTP ${r.status}）`);
+        }
+        if(!r.ok)throw Error(d.detail||'请求失败');
+        allResults.push(...d.results);
+      }catch(err){
+        failedRequests++;
+        const id=file.name.replace(/\.[^.]+$/,'');
+        const message=err instanceof TypeError
+          ?'网络连接中断，请稍后单独重试该文件'
+          :err.message;
+        allResults.push({id,error:message});
+      }
+      results.innerHTML=allResults.map(x=>x.error?`<article class="card fail"><h2>${esc(x.id)}：处理失败</h2><p>${esc(x.error)}</p></article>`:`<article class="card ${x.label==='不通过'?'fail':''}"><h2>${esc(x.id)}：${esc(x.label)}</h2></article>`).join('');
     }
-    if(!r.ok)throw Error(d.detail||'请求失败');
-    statusEl.innerHTML=`<div class="status-box done"><span class="loader"></span><span>评审完成 · 共生成 ${d.count} 条判断结果</span></div>`;
-    results.innerHTML=d.results.map(x=>x.error?`<article class="card fail"><h2>${esc(x.id)}：处理失败</h2></article>`:`<article class="card ${x.label==='不通过'?'fail':''}"><h2>${esc(x.id)}：${esc(x.label)}</h2></article>`).join('');
+    const summary=failedRequests
+      ?`批量评审结束 · ${selectedFiles.length-failedRequests} 个成功，${failedRequests} 个需要重试`
+      :`评审完成 · 共处理 ${selectedFiles.length} 个文件`;
+    statusEl.innerHTML=`<div class="status-box done"><span class="loader"></span><span>${summary}</span></div>`;
     results.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(err){statusEl.innerHTML=`<div class="status-box"><span>运行失败 · ${esc(err.message)}</span></div>`}
   finally{b.disabled=false;if(buttonText)buttonText.textContent='启动智能评审'}
