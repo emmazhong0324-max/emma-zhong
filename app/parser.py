@@ -1,4 +1,4 @@
-import csv, io, json, re
+import csv, io, json, re, subprocess, tempfile
 from pathlib import Path
 from docx import Document
 from pypdf import PdfReader
@@ -19,6 +19,22 @@ def parse_single(name: str, data: bytes) -> str:
     if ext == ".docx":
         doc = Document(io.BytesIO(data))
         return _clean("\n".join(p.text for p in doc.paragraphs))
+    if ext == ".doc":
+        with tempfile.NamedTemporaryFile(suffix=".doc") as source:
+            source.write(data)
+            source.flush()
+            try:
+                result = subprocess.run(
+                    ["antiword", source.name],
+                    capture_output=True,
+                    check=True,
+                    timeout=30,
+                )
+            except FileNotFoundError as exc:
+                raise ValueError("服务器尚未安装 DOC 解析组件") from exc
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                raise ValueError("无法解析该 DOC 文件，请确认文件未损坏") from exc
+        return _clean(result.stdout.decode("utf-8", errors="replace"))
     raise ValueError(f"不支持的文件类型: {ext or '未知'}")
 
 def split_records(name: str, data: bytes) -> list[tuple[str, str]]:
@@ -36,4 +52,3 @@ def split_records(name: str, data: bytes) -> list[tuple[str, str]]:
         rows=csv.DictReader(io.StringIO(data.decode("utf-8-sig")))
         return [(str(r.get("id") or f"sample_{i:03d}"), str(r.get("text") or r.get("content") or r)) for i,r in enumerate(rows,1)]
     return [(Path(name).stem, parse_single(name,data))]
-
